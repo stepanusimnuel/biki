@@ -1,0 +1,45 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Xcode Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager
+.swiftpm/
+.build/
+Package.resolved
+
+# CocoaPods (uncomment if this project ever adopts it)
+# Pods/
+
+# Carthage (uncomment if this project ever adopts it)
+# Carthage/Build/
+
+# Simulator / local run artifacts
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# fastlane (uncomment if this project ever adopts it)
+# fastlane/report.xml
+# fastlane/Preview.html
+# fastlane/screenshots
+# fastlane/test_output
