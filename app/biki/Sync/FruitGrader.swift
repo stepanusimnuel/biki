@@ -8,12 +8,17 @@ import Foundation
 // BluetoothManager.swift), which has always run this combination
 // app-side against real hardware; `colorName` mirrors esp/ble.ino's own
 // colorName() so the label matches what the firmware already classified.
-enum FruitGrader {
+// Pure, stateless computation with no main-actor dependency — marked
+// nonisolated (overriding the project's default MainActor isolation) so
+// it can be called from any context, including DebugSeeder's background
+// @ModelActor.
+nonisolated enum FruitGrader {
     static func grade(weightG: Double, colorCode: Int, hxReady: Bool, colorReady: Bool) -> FruitGrade {
         guard hxReady, colorReady else { return .e }
 
         let isOrange = colorCode == 2
         let isYellow = colorCode == 3
+        let isRed = colorCode == 1
 
         // Reject anything that isn't orange or yellow.
         guard isOrange || isYellow else { return .e }
@@ -22,11 +27,11 @@ enum FruitGrader {
         guard weightG >= 50, weightG <= 180 else { return .e }
 
         // Grade A and B must be genuinely orange.
-        if isOrange, weightG >= 100, weightG <= 130 {
+        if isRed || isOrange, weightG >= 100, weightG <= 130 {
             return .a
         }
 
-        if isOrange,
+        if isOrange || isRed,
            (weightG >= 80 && weightG < 100) || (weightG > 130 && weightG <= 145) {
             return .b
         }

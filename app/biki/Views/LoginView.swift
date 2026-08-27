@@ -9,16 +9,16 @@ import SwiftUI
 // active — you're just browsing the report, not starting a shift.
 struct LoginView: View {
     @AppStorage("operatorName") private var operatorName = ""
+    @AppStorage("operatorRole") private var operatorRole = WorkerRole.qc.rawValue
     @AppStorage("workerRoster") private var workerRosterRaw = ""
-    @State private var selectedWorker: String?
+    @State private var selectedWorker: Worker?
     @State private var isAddingWorker = false
-    @State private var draftName = ""
     @State private var showingLaporan = false
 
     let onContinue: () -> Void
 
-    private var roster: [String] {
-        workerRosterRaw.split(separator: "|").map(String.init).filter { !$0.isEmpty }
+    private var roster: [Worker] {
+        WorkerRoster.decode(workerRosterRaw)
     }
 
     var body: some View {
@@ -27,7 +27,7 @@ struct LoginView: View {
                 Spacer()
 
                 VStack(spacing: 8) {
-                    (Text("Halo, ") + Text("BIKI").foregroundStyle(.orange) + Text(" Staff"))
+                    (Text("Halo, ") + Text("Oren").foregroundStyle(.orange) + Text(" Staff"))
                         .font(.largeTitle.bold())
                     Text("Silahkan masuk terlebih dahulu")
                         .font(.subheadline)
@@ -35,8 +35,8 @@ struct LoginView: View {
                 }
 
                 HStack(spacing: 28) {
-                    ForEach(roster, id: \.self) { name in
-                        profileTile(name)
+                    ForEach(roster) { worker in
+                        profileTile(worker)
                     }
                     addWorkerTile
                 }
@@ -44,7 +44,8 @@ struct LoginView: View {
                 VStack(spacing: 12) {
                     Button("Masuk") {
                         if let selectedWorker {
-                            operatorName = selectedWorker
+                            operatorName = selectedWorker.name
+                            operatorRole = selectedWorker.role.rawValue
                         }
                         onContinue()
                     }
@@ -66,10 +67,10 @@ struct LoginView: View {
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .alert("Tambah Pekerja", isPresented: $isAddingWorker) {
-                TextField("Nama", text: $draftName)
-                Button("Simpan") { addWorker(draftName) }
-                Button("Batal", role: .cancel) {}
+            .sheet(isPresented: $isAddingWorker) {
+                AddWorkerSheet { worker in
+                    addWorker(worker)
+                }
             }
             .navigationDestination(isPresented: $showingLaporan) {
                 LaporanView()
@@ -77,18 +78,26 @@ struct LoginView: View {
         }
     }
 
-    private func profileTile(_ name: String) -> some View {
-        let isSelected = selectedWorker == name
+    private func profileTile(_ worker: Worker) -> some View {
+        let isSelected = selectedWorker == worker
         return Button {
-            selectedWorker = name
+            // Tapping the already-selected tile deselects it — there was
+            // previously no way to back out of a selection short of
+            // picking someone else.
+            selectedWorker = isSelected ? nil : worker
         } label: {
             VStack(spacing: 8) {
                 Image(systemName: isSelected ? "person.crop.circle.fill" : "person.crop.circle")
                     .font(.system(size: 56))
                     .foregroundStyle(isSelected ? Color.orange : Color.secondary)
-                Text(name)
-                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
+                VStack(spacing: 2) {
+                    Text(worker.name)
+                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? .primary : .secondary)
+                    Text(worker.role.rawValue)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -96,7 +105,6 @@ struct LoginView: View {
 
     private var addWorkerTile: some View {
         Button {
-            draftName = ""
             isAddingWorker = true
         } label: {
             VStack(spacing: 8) {
@@ -111,14 +119,12 @@ struct LoginView: View {
         .buttonStyle(.plain)
     }
 
-    private func addWorker(_ name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    private func addWorker(_ worker: Worker) {
         var current = roster
-        if !current.contains(trimmed) {
-            current.append(trimmed)
-            workerRosterRaw = current.joined(separator: "|")
+        if !current.contains(where: { $0.name == worker.name }) {
+            current.append(worker)
+            workerRosterRaw = WorkerRoster.encode(current)
         }
-        selectedWorker = trimmed
+        selectedWorker = worker
     }
 }

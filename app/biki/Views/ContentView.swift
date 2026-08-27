@@ -17,6 +17,7 @@ struct ContentView: View {
     @AppStorage("idSource") private var idSourceRaw = DataFieldSource.esp32.rawValue
     @AppStorage("timestampSource") private var timestampSourceRaw = DataFieldSource.esp32.rawValue
     @AppStorage("operatorName") private var operatorName = ""
+    @AppStorage("operatorRole") private var operatorRole = WorkerRole.qc.rawValue
     @State private var isStarting = false
 
     let onSignOut: () -> Void
@@ -25,9 +26,25 @@ struct ContentView: View {
         batches.first { $0.status == .active }
     }
 
+    // Covers both a terminal error (auto-reconnect exhausted, or no
+    // peripheral ever found) and an in-progress auto-reconnect attempt —
+    // GradingView shows both as the same red banner, distinguished only
+    // by whether canRetryConnection offers a manual "Coba Lagi" button.
     private var connectionErrorMessage: String? {
-        if case .error(let message) = syncEngine?.connectionStatus { return message }
-        return nil
+        switch syncEngine?.connectionStatus {
+        case .error(let message): return message
+        case .reconnecting(let attempt, let maxAttempts):
+            return "Menyambungkan ulang ke ESP32… (percobaan \(attempt)/\(maxAttempts))"
+        default: return nil
+        }
+    }
+
+    // Only a terminal `.error` means BLEFruitDataSource has given up on
+    // its own — offering a manual retry while `.reconnecting` is still in
+    // progress would just race the automatic attempt already in flight.
+    private var canRetryConnection: Bool {
+        if case .error = syncEngine?.connectionStatus { return true }
+        return false
     }
 
     var body: some View {
@@ -40,6 +57,8 @@ struct ContentView: View {
                         timestampMismatchWarning: syncEngine?.timestampMismatchWarning,
                         rejectedCount: syncEngine?.rejectedCount,
                         connectionError: connectionErrorMessage,
+                        canRetryConnection: canRetryConnection,
+                        onRetryConnection: { syncEngine?.retryConnection() },
                         onComplete: { completeBatch(batch) }
                     )
                     .toolbar(.hidden, for: .navigationBar)
@@ -80,7 +99,7 @@ struct ContentView: View {
     private func startBatch() {
         guard !isStarting else { return }
         isStarting = true
-        let batch = Batch(batchLabel: nextBatchLabel(), qcStaff: operatorName)
+        let batch = Batch(batchLabel: nextBatchLabel(), qcStaff: operatorName, qcRole: operatorRole)
         modelContext.insert(batch)
 
         // No wire-level "start" command — the ESP32 has no batch concept,
@@ -89,18 +108,8 @@ struct ContentView: View {
         isStarting = false
     }
 
-    // Sequential per-day counter, e.g. "B2026-08-17-01", "-02", ... — uses
-    // the existing highest sequence for today rather than a plain count,
-    // so a deleted batch never causes the next one to collide with a
-    // label that's still in use.
     private func nextBatchLabel() -> String {
-        let datePrefix = "B\(Date.now.formatted(.iso8601.year().month().day()))"
-        let existingSequences = batches.compactMap { batch -> Int? in
-            guard batch.batchLabel.hasPrefix(datePrefix + "-") else { return nil }
-            return Int(batch.batchLabel.dropFirst(datePrefix.count + 1))
-        }
-        let nextSequence = (existingSequences.max() ?? 0) + 1
-        return "\(datePrefix)-\(String(format: "%02d", nextSequence))"
+        Batch.nextLabel(for: .now, existingLabels: batches.map(\.batchLabel))
     }
 
     private func completeBatch(_ batch: Batch) {

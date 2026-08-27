@@ -6,9 +6,10 @@ import SwiftData
 // pipeline ContentView uses — MockFruitDataSource is a fine data source
 // for this while BLE hardware isn't ready).
 //
-// "Batch Terakhir" (Last Batch) scopes the chart to the single most
-// recent batch, not a daily rollup. Riwayat Grading here is scoped to
-// *today's* batches only — the full multi-day history lives on
+// Both the "Batch Terakhir" chart and "Riwayat Grading Hari Ini" below it
+// are scoped to *today's* batches only, so they always agree — a chart
+// showing yesterday's weight distribution next to an empty "no batches
+// today" table read as contradictory. The full multi-day history lives on
 // LaporanView instead (reached via Login's "Lihat Laporan").
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
@@ -21,11 +22,14 @@ struct DashboardView: View {
     var onSortNewBatch: () -> Void = {}
     var onSignOut: () -> Void = {}
 
-    private var lastBatch: Batch? { allBatches.first }
-
     private var todaysBatches: [Batch] {
         allBatches.filter { Calendar.current.isDateInToday($0.startedAt) }
     }
+
+    // allBatches is already startedAt-descending, and filter preserves
+    // order, so this is today's most recent batch — nil, not yesterday's
+    // last batch, once today has none yet.
+    private var lastBatch: Batch? { todaysBatches.first }
 
     var body: some View {
         NavigationStack {
@@ -69,7 +73,13 @@ struct DashboardView: View {
             Text("Distribusi Berat per Grade")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            WeightDistributionChart(batch: lastBatch)
+            if let lastBatch {
+                WeightDistributionChart(batch: lastBatch)
+            } else {
+                Text("Belum ada batch hari ini")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 190)
+            }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)

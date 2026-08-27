@@ -15,6 +15,12 @@ struct GradingView: View {
     let timestampMismatchWarning: Int?
     let rejectedCount: Int?
     let connectionError: String?
+    // True only once BLEFruitDataSource's own auto-reconnect attempts
+    // (see attemptReconnect) are exhausted — while an attempt is still in
+    // flight, connectionError shows the same banner but without this
+    // button, so we're not racing a retry against the automatic one.
+    let canRetryConnection: Bool
+    let onRetryConnection: () -> Void
     let onComplete: () -> Void
 
     // The "Total" sidebar has its own native-style collapse control (see
@@ -22,13 +28,26 @@ struct GradingView: View {
     // the full width. Re-expanding happens via the same icon, which moves
     // to sit above lastScanCard while collapsed so it's never stranded.
     @State private var isSidebarVisible = true
+    // Completing a batch stops BLE observing and can't be undone from the
+    // UI (no "reopen batch" feature), so it gets the same upfront-confirm
+    // treatment as other consequential actions in this app rather than
+    // firing on a single accidental tap.
+    @State private var isConfirmingComplete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let connectionError {
-                Label(connectionError, systemImage: "wifi.exclamationmark")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                HStack {
+                    Label(connectionError, systemImage: "wifi.exclamationmark")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                    if canRetryConnection {
+                        Spacer()
+                        Button("Coba Lagi", action: onRetryConnection)
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
+                    }
+                }
             }
 
             Text("Batch Grading \(batch.startedAt.formatted(date: .abbreviated, time: .shortened))")
@@ -54,25 +73,30 @@ struct GradingView: View {
                     .foregroundStyle(.orange)
             }
 
-            HStack(alignment: .top, spacing: 20) {
-                if isSidebarVisible {
-                    totalSidebar
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                } else {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { isSidebarVisible = true }
-                    } label: {
-                        Image(systemName: "sidebar.leading")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 4)
+            // iPhone: a 260pt-wide sidebar (see totalSidebar) next to
+            // lastScanCard left almost no room for the card that's
+            // actually supposed to be the hero element on a ~390-430pt-wide
+            // screen. Stacking vertically instead gives both their own
+            // full width. iPad keeps the original side-by-side layout,
+            // completely untouched.
+            if isPhoneIdiom {
+                VStack(alignment: .leading, spacing: 16) {
+                    sidebarOrToggle
+                    lastScanCard
+                        .frame(minHeight: 260)
                 }
-                lastScanCard
+                .frame(maxHeight: .infinity)
+            } else {
+                HStack(alignment: .top, spacing: 20) {
+                    sidebarOrToggle
+                    lastScanCard
+                }
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
 
-            Button(action: onComplete) {
+            Button {
+                isConfirmingComplete = true
+            } label: {
                 Label("Selesai Grading", systemImage: "checkmark")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
@@ -82,9 +106,48 @@ struct GradingView: View {
             .controlSize(.large)
         }
         .padding()
+        .alert("Selesaikan batch ini?", isPresented: $isConfirmingComplete) {
+            Button("Selesai") { onComplete() }
+            Button("Batal", role: .cancel) {}
+        } message: {
+            Text("Batch akan ditutup dan berhenti menerima data baru. Tindakan ini tidak bisa dibatalkan.")
+        }
     }
 
+    @ViewBuilder
+    private var sidebarOrToggle: some View {
+        if isSidebarVisible {
+            totalSidebar
+                .transition(.move(edge: .leading).combined(with: .opacity))
+        } else {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { isSidebarVisible = true }
+            } label: {
+                Image(systemName: "sidebar.leading")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    // iPhone: full available width (stacked above lastScanCard, see body)
+    // instead of a fixed 260pt that only made sense next to a wide card on
+    // iPad. Split into two real branches (not a merged frame() call)
+    // because `.frame(width:)` and `.frame(maxWidth:)` are different
+    // overloads — this guarantees the iPad branch is byte-identical to
+    // the original single `.frame(width: 260, alignment: .leading)`.
     private var totalSidebar: some View {
+        Group {
+            if isPhoneIdiom {
+                totalSidebarContent.frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                totalSidebarContent.frame(width: 260, alignment: .leading)
+            }
+        }
+    }
+
+    private var totalSidebarContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Total")
@@ -130,7 +193,6 @@ struct GradingView: View {
             }
         }
         .padding()
-        .frame(width: 260, alignment: .leading)
         .background(.background, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator, lineWidth: 1))
     }

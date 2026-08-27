@@ -44,12 +44,19 @@ struct GradeStatCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(stat.grade.displayName)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            // The grade is what a QC staffer scans for first — sized and
+            // colored to read before anything else on the card, with the
+            // weight/count (previously the biggest text here) demoted to
+            // a supporting line underneath.
+            Label(stat.grade.displayName, systemImage: stat.grade.badgeIcon)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(stat.grade.badgeColor)
+                .minimumScaleFactor(0.8)
+                .lineLimit(1)
 
             Text(String(format: "%.1f kg • %d buah", stat.totalWeightG / 1000, stat.totalCount))
-                .font(.title2.weight(.bold))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
 
@@ -61,7 +68,7 @@ struct GradeStatCardView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator, lineWidth: 1))
+        .background(stat.grade.badgeColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(stat.grade.badgeColor.opacity(0.25), lineWidth: 1))
     }
 }

@@ -1,4 +1,4 @@
-# HaloBiki iPad App
+# Oren iPad App
 
 QC/grading app for a fruit-sorting rig: an iPad receives per-fruit weight
 + color readings from an ESP32 over Bluetooth Low Energy, grades each
@@ -136,7 +136,7 @@ in the field.**
    note it if porting):
    ```xml
    <key>NSBluetoothAlwaysUsageDescription</key>
-   <string>HaloBiki connects to the grading rig over Bluetooth to receive graded fruit data.</string>
+   <string>Oren connects to the grading rig over Bluetooth to receive graded fruit data.</string>
    ```
    Skipping this crashes the app the instant it touches
    `CBCentralManager` — stricter than a missing network permission, which

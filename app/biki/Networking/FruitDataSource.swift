@@ -3,6 +3,12 @@ import Foundation
 enum ConnectionStatus: Equatable {
     case idle
     case connected
+    // Auto-retry in progress after an unexpected drop — see
+    // BLEFruitDataSource.attemptReconnect. Distinct from `.error` so the
+    // UI can show a quiet "retrying" state instead of alarming the
+    // operator (and offering a manual retry button) before the automatic
+    // attempts are even exhausted.
+    case reconnecting(attempt: Int, maxAttempts: Int)
     case error(String)
 }
 

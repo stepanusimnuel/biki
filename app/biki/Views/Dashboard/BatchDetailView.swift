@@ -1,17 +1,20 @@
 import SwiftUI
 
-// Read-only detail for a past batch, matching the Figma "Last Process" +
-// "Sorting Summary" design. Pushed onto the existing NavigationStack from
-// Sorting History, so the system back button/title still apply — the
-// avatar/name row and "Generate Report" button below are page content,
-// not a replacement nav bar.
+// Read-only detail for a past batch, matching the Figma "sorting-summary-page"
+// design: a custom back chevron + big batch-label title, share/delete
+// actions top-trailing, the QC worker's name+role, Tanggal/Pukul, and a
+// grade-by-grade "Sorting Summary" table. The system nav bar is hidden so
+// the title can be this page's own large heading rather than a small inline
+// bar title, matching the design.
 struct BatchDetailView: View {
     let batch: Batch
+    var onDelete: ((Batch) -> Void)?
 
-    @AppStorage("operatorName") private var operatorName = ""
-    @State private var sortColumn: SortColumn = .grade
+    @Environment(\.dismiss) private var dismiss
+    @State private var sortColumn: SortColumn?
     @State private var sortAscending = true
     @State private var exportFile: ExportFile?
+    @State private var isConfirmingDelete = false
 
     private enum SortColumn {
         case grade, quantity, weight
@@ -30,16 +33,22 @@ struct BatchDetailView: View {
     }
 
     // Always exactly 5 rows (one per FruitGrade case) — there's no
-    // pagination here on purpose, see summarySection.
+    // pagination here on purpose, see summarySection. Reads batch's
+    // gradeBreakdown once (one pass over fruitRecords) rather than calling
+    // count(for:)/weight(for:) ten times, which would each re-scan it.
     private var summaries: [GradeSummary] {
-        FruitGrade.allCases.map { grade in
-            GradeSummary(grade: grade, count: batch.count(for: grade), weightG: batch.weight(for: grade))
+        let breakdown = batch.gradeBreakdown
+        return FruitGrade.allCases.map { grade in
+            let entry = breakdown[grade]
+            return GradeSummary(grade: grade, count: entry?.count ?? 0, weightG: entry?.weightG ?? 0)
         }
     }
 
     private var sortedSummaries: [GradeSummary] {
         let ascending = sortAscending
         switch sortColumn {
+        case nil:
+            return summaries
         case .grade:
             return summaries.sorted { ascending ? $0.grade.rawValue < $1.grade.rawValue : $0.grade.rawValue > $1.grade.rawValue }
         case .quantity:
@@ -50,18 +59,25 @@ struct BatchDetailView: View {
     }
 
     private var initial: String {
-        operatorName.first.map(String.init)?.uppercased() ?? "?"
+        batch.qcStaff.first.map(String.init)?.uppercased() ?? "?"
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                header
+                titleRow
+                workerRow
 
-                Text("Proses Terakhir")
-                    .font(.largeTitle.bold())
-
-                lastProcessRow
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text("Tanggal:").foregroundStyle(.secondary)
+                        Text(batch.startedAt.formatted(date: .long, time: .omitted))
+                    }
+                    HStack(spacing: 4) {
+                        Text("Pukul:").foregroundStyle(.secondary)
+                        Text(batch.startedAt.formatted(date: .omitted, time: .shortened))
+                    }
+                }
 
                 if !batch.rejectedEvents.isEmpty {
                     NavigationLink {
@@ -77,32 +93,36 @@ struct BatchDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(batch.batchLabel)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(item: $exportFile) { file in
             ShareSheet(activityItems: [file.url])
         }
+        .alert("Hapus batch ini?", isPresented: $isConfirmingDelete) {
+            Button("Hapus", role: .destructive) {
+                onDelete?(batch)
+                dismiss()
+            }
+            Button("Batal", role: .cancel) {}
+        } message: {
+            Text("\(batch.batchLabel) akan dihapus permanen, termasuk semua data buah di dalamnya.")
+        }
     }
 
-    private var header: some View {
-        HStack(spacing: 16) {
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(.primary)
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Text(initial)
-                            .font(.headline)
-                            .foregroundStyle(.background)
-                    )
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(operatorName.isEmpty ? "Atur nama" : operatorName)
-                        .font(.subheadline.weight(.semibold))
-                    Text("Kontrol Kualitas")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    private var titleRow: some View {
+        HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title3.weight(.semibold))
             }
+            .buttonStyle(.plain)
+
+            Text(batch.batchLabel)
+                .font(.title.bold())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
 
             Spacer()
 
@@ -118,34 +138,39 @@ struct BatchDetailView: View {
                     }
                 }
             } label: {
-                Label("Buat Laporan", systemImage: "doc.badge.plus")
+                Image(systemName: "square.and.arrow.up")
             }
-            .buttonStyle(.bordered)
+            .accessibilityLabel("Buat Laporan")
+
+            if onDelete != nil {
+                Button {
+                    isConfirmingDelete = true
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
+                }
+                .accessibilityLabel("Hapus Batch")
+            }
         }
     }
 
-    private var lastProcessRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                Text("Tanggal:").foregroundStyle(.secondary)
-                Text(batch.startedAt.formatted(date: .abbreviated, time: .omitted))
+    private var workerRow: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(.primary)
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Text(initial)
+                        .font(.headline)
+                        .foregroundStyle(.background)
+                )
+            VStack(alignment: .leading, spacing: 0) {
+                Text(batch.qcStaff.isEmpty ? "—" : batch.qcStaff)
+                    .font(.subheadline.weight(.semibold))
+                Text(batch.qcRole.isEmpty ? WorkerRole.qc.rawValue : batch.qcRole)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            HStack(spacing: 4) {
-                Text("Waktu:").foregroundStyle(.secondary)
-                Text(batch.startedAt.formatted(date: .omitted, time: .shortened))
-            }
-
-            Text("Total")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-
-            HStack(spacing: 12) {
-                Text(String(format: "%.1f kg", batch.totalWeightG / 1000))
-                Text("|").foregroundStyle(.tertiary)
-                Text("\(batch.totalCount) buah")
-            }
-            .font(.largeTitle.bold())
         }
     }
 
@@ -184,7 +209,7 @@ struct BatchDetailView: View {
     private var summaryTable: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                sortableHeader("Grade Terbanyak", column: .grade)
+                sortableHeader("Grade", column: .grade)
                 sortableHeader("Jumlah", column: .quantity)
                 sortableHeader("Berat", column: .weight)
             }
@@ -210,6 +235,22 @@ struct BatchDetailView: View {
                     Divider()
                 }
             }
+
+            Divider()
+
+            HStack {
+                Text("Total")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(batch.totalCount) buah")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(String(format: "%.1f kg", batch.totalWeightG / 1000))
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
         }
     }
 }

@@ -1,4 +1,4 @@
-# HaloBiki iPad App — Data Architecture
+# Oren iPad App — Data Architecture
 
 Scope: single iPad, single rig, local persistence only. "Sync" here means
 ESP32 → iPad data flow, not multi-device or cloud sync. If that
@@ -90,13 +90,24 @@ BLE, push-based (GATT notify) — not HTTP polling. Implemented in
 
 1. The ESP32 is a raw sensor: it notifies a BLE characteristic with a
    fixed 12-byte packet (`weight`, raw R/G/B, `colorCode`, status
-   bitmask) as soon as a fruit is weighed/scanned — see
-   `Networking/DTOs.swift` for the exact layout. No `seq`/`timestamp` on
-   the real wire (see below).
+   bitmask) — see `Networking/DTOs.swift` for the exact layout. No
+   `seq`/`timestamp` on the real wire (see below). This is a *continuous*
+   stream while a fruit sits on the load cell settling, not one clean
+   packet per fruit — `BLEFruitDataSource.processDecodedPacket` runs a
+   settle-detection debounce (ported from the companion app's
+   `BluetoothManager.checkAutomaticGrading`) that only forwards a
+   notification to `onEvent` once weight has held steady for 3
+   consecutive packets, then requires the platform to read back
+   near-empty for 3 consecutive packets before the next fruit can be
+   detected. Without this, one physical fruit would be graded and
+   persisted as many separate `FruitRecord`s. `MockFruitDataSource`
+   doesn't need this — it already emits one discrete event per simulated
+   fruit.
 2. `ContentView` builds a `FruitDataSource` (`BLEFruitDataSource` or
    `MockFruitDataSource`, per the "Sumber Data" setting) and hands it to
    `SyncEngine`. The iPad subscribes once a batch is active
-   (`SyncEngine.beginObserving`) and receives events via `onEvent`.
+   (`SyncEngine.beginObserving`) and receives events via `onEvent` — each
+   call is assumed to be exactly one distinct fruit.
 3. `FruitGrader` (app-side, placeholder — see "App-side grading" below)
    classifies each event's weight + RGB into a `grade` and `colorName`.
 4. Each event is validated before persisting: `hxReady`/`colorReady`

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // Replaces the old single confirmationDialog on the gear icon — now that
 // there are 3 independent config dimensions (data source, ID source,
@@ -13,6 +14,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     #if DEBUG
     @State private var pendingSeedAction: DebugSeedAction?
+    @State private var isSeeding = false
 
     private enum DebugSeedAction {
         case fill, remove
@@ -52,10 +54,18 @@ struct SettingsView: View {
 
                 #if DEBUG
                 Section {
-                    Button("Isi Data Contoh (Debug)") { pendingSeedAction = .fill }
-                    Button("Hapus Data Contoh (Debug)", role: .destructive) { pendingSeedAction = .remove }
+                    if isSeeding {
+                        HStack {
+                            ProgressView()
+                            Text("Memproses data contoh…")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Button("Isi Data Contoh (Debug)") { pendingSeedAction = .fill }
+                        Button("Hapus Data Contoh (Debug)", role: .destructive) { pendingSeedAction = .remove }
+                    }
                 } footer: {
-                    Text("Isi menambahkan 8 hari data riwayat contoh (beberapa batch per hari) tanpa menghapus data asli, supaya grafik tren di halaman Laporan bisa diuji tanpa menunggu data asli selama seminggu. Hapus hanya menghapus data contoh yang ditambahkan. Hanya ada di build Debug.")
+                    Text("Isi menambahkan 8 hari data riwayat contoh (±2 ton/hari, beberapa batch per hari) tanpa menghapus data asli, supaya grafik tren di halaman Laporan bisa diuji tanpa menunggu data asli selama seminggu — prosesnya berat (puluhan ribu data buah) dan bisa memakan waktu sekitar satu menit. Hapus hanya menghapus data contoh yang ditambahkan. Hanya ada di build Debug.")
                 }
                 #endif
             }
@@ -75,17 +85,27 @@ struct SettingsView: View {
                 titleVisibility: .visible
             ) {
                 Button(pendingSeedAction == .fill ? "Isi Data" : "Hapus Data", role: .destructive) {
-                    switch pendingSeedAction {
-                    case .fill: DebugSeeder.seedHistoricalTrendData(modelContext: modelContext)
-                    case .remove: DebugSeeder.removeDemoData(modelContext: modelContext)
-                    case nil: break
-                    }
+                    let action = pendingSeedAction
                     pendingSeedAction = nil
+                    isSeeding = true
+                    Task {
+                        // DebugSeeder is a @ModelActor — this runs on its
+                        // own background executor, not the main actor, so
+                        // the UI (including the ProgressView above) stays
+                        // responsive for the ~1 minute this can take.
+                        let seeder = DebugSeeder(modelContainer: modelContext.container)
+                        switch action {
+                        case .fill: await seeder.seedHistoricalTrendData()
+                        case .remove: await seeder.removeDemoData()
+                        case nil: break
+                        }
+                        isSeeding = false
+                    }
                 }
                 Button("Batal", role: .cancel) { pendingSeedAction = nil }
             } message: {
                 Text(pendingSeedAction == .fill
-                     ? "8 hari data contoh (beberapa batch per hari, jumlah acak) akan ditambahkan. Data asli tidak akan terhapus."
+                     ? "8 hari data contoh (±2 ton/hari, beberapa batch per hari) akan ditambahkan. Data asli tidak akan terhapus."
                      : "Semua data contoh yang pernah ditambahkan akan dihapus. Data asli tidak akan terpengaruh.")
             }
             #endif

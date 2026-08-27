@@ -51,30 +51,56 @@ struct SortingHistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Riwayat Grading")
-                    .font(.title3.bold())
-                Spacer()
-                searchField
+            // iPhone: title + up-to-280pt search field side by side left
+            // almost no room for either on a ~350-400pt-wide screen —
+            // stack them instead. iPad keeps the original HStack, since
+            // its width was what searchField's 280pt cap was sized for.
+            if isPhoneIdiom {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Riwayat Grading Hari Ini")
+                        .font(.title3.bold())
+                    searchField
+                }
+            } else {
+                HStack {
+                    Text("Riwayat Grading Hari Ini")
+                        .font(.title3.bold())
+                    Spacer()
+                    searchField
+                }
             }
 
-            // `containerRelativeFrame` reads the ScrollView's own available
-            // width directly and synchronously — unlike a GeometryReader +
-            // PreferenceKey pair, which read that width one layout pass
-            // late via a preference round-trip and got stuck reporting 0.
-            // `max(length, Column.minTotal)` keeps a floor: stretch to fill
-            // on wide layouts, fall back to horizontal scroll when the
-            // container is narrower than the columns comfortably need.
-            //
-            // Each column below has `maxWidth: .infinity`, so once `table`
-            // has a real resolved width, all five columns share the
-            // leftover space evenly — a single trailing spacer after "View
-            // Detail" left all of it as one dead gap instead.
-            ScrollView(.horizontal, showsIndicators: false) {
-                table
-                    .containerRelativeFrame(.horizontal, alignment: .leading) { length, _ in
-                        max(length, Column.minTotal)
-                    }
+            // iPhone: the fixed-column `table` below needs Column.minTotal
+            // (sized for iPad) of width and falls back to horizontal
+            // scroll on anything narrower — on iPhone that meant "Lihat
+            // Detail" and the delete button were only reachable by
+            // scrolling right, every time. `tablePhone` is a genuinely
+            // different layout (stacked rows, no fixed column widths) that
+            // needs no scrolling at all. iPad keeps the exact original
+            // `table` + ScrollView(.horizontal), untouched.
+            if isPhoneIdiom {
+                tablePhone
+            } else {
+                // `containerRelativeFrame` reads the ScrollView's own
+                // available width directly and synchronously — unlike a
+                // GeometryReader + PreferenceKey pair, which read that
+                // width one layout pass late via a preference round-trip
+                // and got stuck reporting 0. `max(length, Column.minTotal)`
+                // keeps a floor: stretch to fill on wide layouts, fall
+                // back to horizontal scroll when the container is
+                // narrower than the columns comfortably need.
+                //
+                // Each column below has `maxWidth: .infinity`, so once
+                // `table` has a real resolved width, all five columns
+                // share the leftover space evenly — a single trailing
+                // spacer after "View Detail" left all of it as one dead
+                // gap instead.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    table
+                        .containerRelativeFrame(.horizontal, alignment: .leading) { length, _ in
+                            max(length, Column.minTotal)
+                        }
+                }
             }
 
             if showPagination {
@@ -170,10 +196,62 @@ struct SortingHistorySection: View {
         static let minTotal: CGFloat = dateMin + processedMin + staffMin + gradeMin + detailMin + deleteWidth + spacing * 5
     }
 
+    // iPhone-only: each batch as a compact 3-line stacked row instead of
+    // fixed-width columns, so nothing needs Column.minTotal of horizontal
+    // room — "Lihat Detail" and delete are always on-screen, no scrolling.
+    // 44pt-tall tap targets on both per Apple's minimum tappable size.
+    private var tablePhone: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if pagedBatches.isEmpty {
+                Text("Tidak ada batch ditemukan")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 16)
+            } else {
+                ForEach(pagedBatches) { batch in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(batch.batchLabel)
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            if let top = batch.topGrade {
+                                GradeBadge(grade: top)
+                            } else {
+                                Text("—").foregroundStyle(.secondary)
+                            }
+                        }
+                        Text("\(batch.qcStaff.isEmpty ? "—" : batch.qcStaff) · \(String(format: "%.1f kg / %d buah", batch.totalWeightG / 1000, batch.totalCount))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            NavigationLink("Lihat Detail") {
+                                BatchDetailView(batch: batch, onDelete: onDelete)
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            Spacer()
+                            if onDelete != nil {
+                                Button {
+                                    batchPendingDeletion = batch
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .frame(minHeight: 44)
+                    }
+                    .padding(.vertical, 6)
+                    Divider()
+                }
+            }
+        }
+    }
+
     private var table: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: Column.spacing) {
-                headerLabel("Tanggal / Batch", chevron: "chevron.down", minWidth: Column.dateMin, maxWidth: .infinity)
+                headerLabel("Batch", chevron: "chevron.down", minWidth: Column.dateMin, maxWidth: .infinity)
                 headerLabel("Total Diproses", chevron: "chevron.up", minWidth: Column.processedMin, maxWidth: Column.processedMax)
                 headerLabel("Petugas QC", chevron: "chevron.up", minWidth: Column.staffMin, maxWidth: Column.staffMax)
                 headerLabel("Grade Terbanyak", chevron: "chevron.down", minWidth: Column.gradeMin, maxWidth: Column.gradeMax)
@@ -198,7 +276,7 @@ struct SortingHistorySection: View {
             } else {
                 ForEach(pagedBatches) { batch in
                     HStack(spacing: Column.spacing) {
-                        Text("\(batch.startedAt.formatted(date: .abbreviated, time: .omitted)) / \(batch.batchLabel)")
+                        Text(batch.batchLabel)
                             .frame(minWidth: Column.dateMin, maxWidth: .infinity, alignment: .leading)
                         Text(String(format: "%.1f kg / %d buah", batch.totalWeightG / 1000, batch.totalCount))
                             .frame(minWidth: Column.processedMin, maxWidth: Column.processedMax, alignment: .leading)
@@ -214,7 +292,7 @@ struct SortingHistorySection: View {
                         }
                         .frame(minWidth: Column.gradeMin, maxWidth: Column.gradeMax, alignment: .leading)
                         NavigationLink("Lihat Detail") {
-                            BatchDetailView(batch: batch)
+                            BatchDetailView(batch: batch, onDelete: onDelete)
                         }
                         .foregroundStyle(.orange)
                         .fontWeight(.semibold)

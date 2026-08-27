@@ -2,7 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleDisplayName</key>
+    <string>Oren</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>HaloBiki connects to the grading rig over Bluetooth to receive graded fruit data.</string>
+    <string>Oren connects to the grading rig over Bluetooth to receive graded fruit data.</string>
 </dict>
 </plist>

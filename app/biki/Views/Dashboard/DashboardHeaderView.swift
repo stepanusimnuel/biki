@@ -2,22 +2,22 @@ import SwiftUI
 
 // No accounts/auth exist in this app (single iPad, local-only — see
 // Data_Architecture.md), so there's nothing real to log "in"/"out" of.
-// "Workers" is just a locally-stored roster of names typed in on this
-// iPad — tap the avatar to switch between them or add a new one. "Sign
-// out" clears the current selection and returns to the Login/worker-picker
-// screen, standing in for handing the device to the next person on shift,
-// not real authentication.
+// "Workers" is just a locally-stored roster of names/roles typed in on
+// this iPad — tap the avatar to switch between them or add a new one.
+// "Sign out" clears the current selection and returns to the
+// Login/worker-picker screen, standing in for handing the device to the
+// next person on shift, not real authentication.
 struct DashboardHeaderView: View {
     @AppStorage("operatorName") private var operatorName = ""
+    @AppStorage("operatorRole") private var operatorRole = WorkerRole.qc.rawValue
     @AppStorage("workerRoster") private var workerRosterRaw = ""
     @State private var isAddingWorker = false
-    @State private var draftName = ""
     @State private var isShowingSettings = false
 
     let onSignOut: () -> Void
 
-    private var roster: [String] {
-        workerRosterRaw.split(separator: "|").map(String.init).filter { !$0.isEmpty }
+    private var roster: [Worker] {
+        WorkerRoster.decode(workerRosterRaw)
     }
 
     private var initial: String {
@@ -27,14 +27,15 @@ struct DashboardHeaderView: View {
     var body: some View {
         HStack(spacing: 16) {
             Menu {
-                ForEach(roster, id: \.self) { name in
+                ForEach(roster) { worker in
                     Button {
-                        operatorName = name
+                        operatorName = worker.name
+                        operatorRole = worker.role.rawValue
                     } label: {
-                        if name == operatorName {
-                            Label(name, systemImage: "checkmark")
+                        if worker.name == operatorName {
+                            Label(worker.name, systemImage: "checkmark")
                         } else {
-                            Text(name)
+                            Text(worker.name)
                         }
                     }
                 }
@@ -42,7 +43,6 @@ struct DashboardHeaderView: View {
                     Divider()
                 }
                 Button {
-                    draftName = ""
                     isAddingWorker = true
                 } label: {
                     Label("Tambah pekerja baru", systemImage: "plus")
@@ -61,7 +61,7 @@ struct DashboardHeaderView: View {
                         Text(operatorName.isEmpty ? "Atur nama" : operatorName)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
-                        Text("Kontrol Kualitas")
+                        Text(operatorName.isEmpty ? "" : operatorRole)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -90,24 +90,23 @@ struct DashboardHeaderView: View {
         .padding()
         .background(.background)
         .overlay(alignment: .bottom) { Divider() }
-        .alert("Tambah Pekerja", isPresented: $isAddingWorker) {
-            TextField("Nama", text: $draftName)
-            Button("Simpan") { addWorker(draftName) }
-            Button("Batal", role: .cancel) {}
+        .sheet(isPresented: $isAddingWorker) {
+            AddWorkerSheet { worker in
+                addWorker(worker)
+            }
         }
         .sheet(isPresented: $isShowingSettings) {
             SettingsView()
         }
     }
 
-    private func addWorker(_ name: String) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    private func addWorker(_ worker: Worker) {
         var current = roster
-        if !current.contains(trimmed) {
-            current.append(trimmed)
-            workerRosterRaw = current.joined(separator: "|")
+        if !current.contains(where: { $0.name == worker.name }) {
+            current.append(worker)
+            workerRosterRaw = WorkerRoster.encode(current)
         }
-        operatorName = trimmed
+        operatorName = worker.name
+        operatorRole = worker.role.rawValue
     }
 }

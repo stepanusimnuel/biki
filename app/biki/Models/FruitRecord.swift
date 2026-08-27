@@ -3,6 +3,10 @@ import SwiftData
 
 @Model
 final class FruitRecord {
+    // receivedAt is what every FruitRecord @Query sorts and range-filters
+    // by (see LaporanView).
+    #Index<FruitRecord>([\.receivedAt])
+
     var id: UUID
     var batch: Batch?
 

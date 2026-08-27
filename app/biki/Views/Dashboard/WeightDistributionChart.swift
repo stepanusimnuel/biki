@@ -8,8 +8,12 @@ struct WeightDistributionChart: View {
     let batch: Batch?
 
     private var rows: [(grade: FruitGrade, weightKg: Double)] {
-        FruitGrade.allCases.map { grade in
-            (grade, (batch?.weight(for: grade) ?? 0) / 1000)
+        // One pass over the batch's records (via gradeBreakdown) instead
+        // of five — batch?.weight(for:) called per grade would each
+        // re-scan the whole fruitRecords array.
+        let breakdown = batch?.gradeBreakdown ?? [:]
+        return FruitGrade.allCases.map { grade in
+            (grade, (breakdown[grade]?.weightG ?? 0) / 1000)
         }
     }
 

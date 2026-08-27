@@ -83,6 +83,16 @@ final class SyncEngine {
         activeBatch = nil
     }
 
+    /// Manual retry after BLEFruitDataSource's automatic reconnect
+    /// attempts (see its attemptReconnect) are exhausted and
+    /// connectionStatus has settled into a terminal `.error` — surfaced
+    /// as a "Coba Lagi" button in GradingView. Just re-enters connect(),
+    /// which also resets the auto-reconnect attempt counter, so the next
+    /// unexpected drop gets its own fresh set of retries.
+    func retryConnection() {
+        dataSource.connect()
+    }
+
     /// Call once, right before completing a batch. BLE delivery is
     /// push-based so there's no "one more poll" to do the way HTTP
     /// polling had — but a fruit graded right at the moment Complete is
@@ -146,6 +156,14 @@ final class SyncEngine {
                 reason: reason
             )
             modelContext.insert(rejected)
+            // Explicit save (not relying on autosave — its timing isn't
+            // guaranteed/immediate) so the UI reflects this right away.
+            // See the identical comment below on `record` for why this
+            // matters: without it, sendGrade below still fires instantly
+            // (it doesn't touch the model context at all), but the
+            // on-screen result can lag noticeably behind the actual
+            // command reaching the ESP32.
+            try? modelContext.save()
             rejectedCount = (rejectedCount ?? 0) + 1
             lastSeenSeq = max(lastSeenSeq, seq)
             return
@@ -181,15 +199,32 @@ final class SyncEngine {
         )
         record.receivedAt = receivedAt
         modelContext.insert(record)
+        // Explicit save — SwiftData's autosave timing isn't guaranteed or
+        // immediate (per SwiftData core guidance, prefer an explicit
+        // save() when correctness/promptness matters), and GradingView's
+        // lastScanCard/totalSidebar read `batch.fruitRecords`/`lastRecord`
+        // straight off this relationship. Without this, sendGrade below
+        // still writes to the ESP32 immediately (it's independent of the
+        // model context entirely), but the on-screen result could lag
+        // behind the command actually reaching the device — this is what
+        // fixes that gap, not any change to the settle-detection timing.
+        try? modelContext.save()
         lastSeenSeq = max(lastSeenSeq, seq)
 
         // Tell the ESP32 which physical lane to sort this fruit into —
         // the command channel's only real job. Fire-and-forget: a failed
-        // write shouldn't block ingest, and surfaces via connectionStatus
-        // on the data source's next status callback instead.
+        // write shouldn't block ingest, but it's logged (not silently
+        // discarded via `try?`) — a write can fail for reasons that don't
+        // trigger a connectionStatus change at all (e.g. a GATT error on
+        // an otherwise-live connection), which would otherwise leave the
+        // servo simply not moving with zero signal anywhere as to why.
         let dataSource = dataSource
         Task {
-            try? await dataSource.sendGrade(grade)
+            do {
+                try await dataSource.sendGrade(grade)
+            } catch {
+                print("SyncEngine: failed to send grade \(grade.rawValue) command to ESP32 — \(error)")
+            }
         }
     }
 }
