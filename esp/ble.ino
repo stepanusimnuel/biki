@@ -36,27 +36,29 @@ const int SERVO_13_PIN = 13;
 const int SERVO_MIN_US = 500;
 const int SERVO_MAX_US = 2400;
 
-const int POSISI_AWAL = 0;
+const int SERVO_9_POSISI_AWAL = 120;
+const int SERVO_15_POSISI_AWAL = 90;
+const int SERVO_13_POSISI_AWAL = 120;
 
-const int SERVO_15_SAPU = 90;
+const int SERVO_15_SAPU = 0;
 
-const int POSISI_1 = 45;
-const int POSISI_2 = 135;
+const int POSISI_1 = 30;
+const int POSISI_2 = 0;
 
 // Total waktu jeruk melalui bidang miring.
-const unsigned long WAKTU_PROSES_MS = 3000;
+const unsigned long WAKTU_PROSES_MS = 2500;
 
 // Kecepatan servo:
 // angka lebih besar = lebih lambat.
-const int DELAY_PER_DERAJAT_MS = 10;
+const int DELAY_PER_DERAJAT_MS = 3;
 
 Servo servo15;
 Servo servo9;
 Servo servo13;
 
-int servo15Position = POSISI_AWAL;
-int servo9Position = POSISI_AWAL;
-int servo13Position = POSISI_AWAL;
+int servo15Position = SERVO_15_POSISI_AWAL;
+int servo9Position = SERVO_9_POSISI_AWAL;
+int servo13Position = SERVO_13_POSISI_AWAL;
 
 // ===================================================
 // BLE COMMAND
@@ -184,11 +186,13 @@ void moveServoSmooth(
     for (int angle = currentPosition; angle <= targetPosition; angle++) {
       writeServo(servo, angle);
       delay(DELAY_PER_DERAJAT_MS);
+      Serial.println(currentPosition);
     }
   } else {
     for (int angle = currentPosition; angle >= targetPosition; angle--) {
       writeServo(servo, angle);
       delay(DELAY_PER_DERAJAT_MS);
+      Serial.println(currentPosition);
     }
   }
 
@@ -199,19 +203,19 @@ void resetAllServo() {
   moveServoSmooth(
     servo15,
     servo15Position,
-    POSISI_AWAL
+    SERVO_15_POSISI_AWAL
   );
 
   moveServoSmooth(
     servo9,
     servo9Position,
-    POSISI_AWAL
+    SERVO_9_POSISI_AWAL
   );
 
   moveServoSmooth(
     servo13,
     servo13Position,
-    POSISI_AWAL
+    SERVO_13_POSISI_AWAL
   );
 }
 
@@ -270,28 +274,28 @@ void processCommand() {
 
   switch (command) {
     case CMD_GRADE_A:
-      // Servo 9 posisi 2, servo 13 awal.
-      jalankanGrade(POSISI_2, POSISI_AWAL, "A");
+      // Servo 13 posisi 2, servo 9 awal.
+      jalankanGrade(SERVO_9_POSISI_AWAL, POSISI_1, "A");
       break;
 
     case CMD_GRADE_B:
-      // Servo 9 posisi 1, servo 13 awal.
-      jalankanGrade(POSISI_1, POSISI_AWAL, "B");
+      // Servo 13 posisi 1, servo 9 awal.
+      jalankanGrade(SERVO_9_POSISI_AWAL, POSISI_2, "B");
       break;
 
     case CMD_GRADE_C:
-      // Servo 9 awal, servo 13 posisi 1.
-      jalankanGrade(POSISI_AWAL, POSISI_1, "C");
+      // Servo 13 awal, servo 9 posisi 1.
+      jalankanGrade(POSISI_1, SERVO_13_POSISI_AWAL, "C");
       break;
 
     case CMD_GRADE_EDIBLE:
-      // Servo 9 awal, servo 13 posisi 2.
-      jalankanGrade(POSISI_AWAL, POSISI_2, "D");
+      // Servo 13 awal, servo 9 posisi 2.
+      jalankanGrade(POSISI_2, SERVO_13_POSISI_AWAL, "D");
       break;
 
     case CMD_GRADE_REJECT:
       // Semua servo awal, tetapi servo 15 tetap menyapu jeruk.
-      jalankanGrade(POSISI_AWAL, POSISI_AWAL, "E");
+      jalankanGrade(SERVO_9_POSISI_AWAL, SERVO_13_POSISI_AWAL, "E");
       break;
 
     default:
@@ -439,9 +443,9 @@ void setup() {
   servo9.attach(SERVO_9_PIN, SERVO_MIN_US, SERVO_MAX_US);
   servo13.attach(SERVO_13_PIN, SERVO_MIN_US, SERVO_MAX_US);
 
-  writeServo(servo15, POSISI_AWAL);
-  writeServo(servo9, POSISI_AWAL);
-  writeServo(servo13, POSISI_AWAL);
+  writeServo(servo15, SERVO_15_POSISI_AWAL);
+  writeServo(servo9, SERVO_9_POSISI_AWAL);
+  writeServo(servo13, SERVO_13_POSISI_AWAL);
 
   resetAllServo();
 
